@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import "./styles.css";import { createClient } from "@supabase/supabase-js";
+import "./styles.css";
+import { createClient } from "@supabase/supabase-js";
 
 const OFFICIAL =
   "https://www.fsgc.sm/it/campionato/campionato-sammarinese/1";
