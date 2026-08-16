@@ -7,13 +7,13 @@ import "./styles.css";
 const SUPABASE_URL = "https://larnilxinubegpvuddgs.supabase.co";
 const SUPABASE_KEY = "sb_publishable_NvE3GTkC0hmlBdyM3pouZg_Yu-STMt-";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
 
 const OFFICIAL =
   "https://www.fsgc.sm/it/campionato/campionato-sammarinese/1";
-
-const FIXTURES =
-  "https://www.fsgc.sm/it/notizia/fixtures-tonights-draw-kicks-off-2026-27-season/2283";
 
 const teams = [
   "Virtus",
@@ -72,93 +72,66 @@ function money(value) {
 
 function normalizePlayer(player, index) {
   const position = String(
-    player.position ||
-      player.pos ||
-      player.role ||
-      "DEL"
+    player.position || "FWD"
   ).toUpperCase();
-
-  let price = Number(
-    player.price ||
-      player.value ||
-      player.market_value ||
-      0
-  );
-
-  if (!price || Number.isNaN(price)) {
-    if (
-      position.includes("POR") ||
-      position.includes("GK")
-    ) {
-      price = 5;
-    } else if (
-      position.includes("DEF") ||
-      position.includes("DIF")
-    ) {
-      price = 7;
-    } else if (
-      position.includes("MED") ||
-      position.includes("MID")
-    ) {
-      price = 8;
-    } else {
-      price = 9;
-    }
-  }
-
-  if (price > 1000) {
-    price = price / 1000000;
-  }
 
   let pos = "DEL";
 
   if (
-    position.includes("GK") ||
-    position.includes("POR")
+    position === "GK" ||
+    position === "POR"
   ) {
     pos = "POR";
   } else if (
-    position.includes("DEF") ||
-    position.includes("DIF")
+    position === "DEF" ||
+    position === "DIF"
   ) {
     pos = "DEF";
   } else if (
-    position.includes("MED") ||
-    position.includes("MID")
+    position === "MID" ||
+    position === "MED"
   ) {
     pos = "MED";
   }
 
+  /*
+   * Tu tabla actual no tiene precio.
+   * Por eso damos un precio inicial según posición.
+   */
+  let price = 9;
+
+  if (pos === "POR") price = 5;
+  if (pos === "DEF") price = 7;
+  if (pos === "MED") price = 8;
+
   return {
     id: String(
       player.external_id ||
-        player.id ||
-        index
+      player.id ||
+      index
     ),
     dbId: player.id,
     name: player.name || "Jugador",
-    team:
-      player.club ||
-      player.team ||
-      player.club_name ||
-      "Sin equipo",
+    team: player.club || "Sin equipo",
     pos,
     price,
     officialUrl:
-      player.official_url ||
-      player.fsgc_url ||
-      player.url ||
-      null
+      player.official_url || null,
+    photoUrl:
+      player.photo_url || null
   };
 }
 
 function App() {
   const [tab, setTab] = useState("home");
+
   const [players, setPlayers] = useState([]);
-  const [loadingPlayers, setLoadingPlayers] = useState(true);
-  const [dataStatus, setDataStatus] = useState(
-    "Conectando con Supabase..."
-  );
+
+  const [loadingPlayers, setLoadingPlayers] =
+    useState(true);
+
+  const [dataStatus, setDataStatus] =
+    useState("Conectando con Supabase...");
 
   const [squad, setSquad] = useState(() => {
     try {
@@ -171,11 +144,15 @@ function App() {
   });
 
   const [search, setSearch] = useState("");
+
   const [teamFilter, setTeamFilter] =
     useState("Todos");
+
   const [formation, setFormation] =
     useState("4-3-3");
-  const [toast, setToast] = useState("");
+
+  const [toast, setToast] =
+    useState("");
 
   const budget = 100;
 
@@ -189,28 +166,51 @@ function App() {
   useEffect(() => {
     async function loadPlayers() {
       setLoadingPlayers(true);
+
       setDataStatus(
         "Cargando jugadores desde Supabase..."
       );
 
+      /*
+       * IMPORTANTE:
+       * Usamos solamente columnas que existen
+       * realmente en tu tabla players.
+       */
       const result = await supabase
         .from("players")
         .select(
-          "id,external_id,name,position,club"
+          "id,external_id,name,position,club,club_external_id,photo_url,official_url,active"
         )
+        .eq("active", true)
         .order("name");
 
       if (result.error) {
         console.error(
-          "Supabase players error:",
+          "ERROR SUPABASE:",
           result.error
         );
 
-        setPlayers(fallbackPlayers);
-        setDataStatus(
-          "Error de Supabase · usando respaldo"
+        /*
+         * Esto nos enseñará el error exacto
+         * que devuelve Supabase.
+         */
+        alert(
+          "ERROR DE SUPABASE\n\n" +
+          JSON.stringify(
+            result.error,
+            null,
+            2
+          )
         );
+
+        setPlayers(fallbackPlayers);
+
+        setDataStatus(
+          "No se pudieron cargar los jugadores · usando respaldo"
+        );
+
         setLoadingPlayers(false);
+
         return;
       }
 
@@ -218,21 +218,37 @@ function App() {
         !result.data ||
         result.data.length === 0
       ) {
-        setPlayers(fallbackPlayers);
-        setDataStatus(
-          "Sin jugadores · usando respaldo"
+        alert(
+          "Supabase respondió correctamente, pero devolvió 0 jugadores."
         );
+
+        setPlayers(fallbackPlayers);
+
+        setDataStatus(
+          "Supabase devolvió 0 jugadores · usando respaldo"
+        );
+
         setLoadingPlayers(false);
+
         return;
       }
 
+      console.log(
+        "JUGADORES SUPABASE:",
+        result.data
+      );
+
       const converted =
-        result.data.map(normalizePlayer);
+        result.data.map(
+          normalizePlayer
+        );
 
       setPlayers(converted);
+
       setDataStatus(
         `Supabase · ${converted.length} jugadores`
       );
+
       setLoadingPlayers(false);
     }
 
@@ -242,18 +258,24 @@ function App() {
   const spent = squad.reduce(
     (total, id) => {
       const player = players.find(
-        p => String(p.id) === String(id)
+        p =>
+          String(p.id) ===
+          String(id)
       );
 
-      return total + (player?.price || 0);
+      return (
+        total +
+        (player?.price || 0)
+      );
     },
     0
   );
 
-  const available = budget - spent;
+  const available =
+    budget - spent;
 
-  const filteredPlayers = players.filter(
-    player => {
+  const filteredPlayers =
+    players.filter(player => {
       const teamOK =
         teamFilter === "Todos" ||
         player.team === teamFilter;
@@ -264,10 +286,11 @@ function App() {
 
       return (
         teamOK &&
-        text.includes(search.toLowerCase())
+        text.includes(
+          search.toLowerCase()
+        )
       );
-    }
-  );
+    });
 
   function flash(message) {
     setToast(message);
@@ -280,20 +303,30 @@ function App() {
   function buy(player) {
     if (
       squad.some(
-        id => String(id) === String(player.id)
+        id =>
+          String(id) ===
+          String(player.id)
       )
     ) {
-      flash("Ya tienes este jugador.");
+      flash(
+        "Ya tienes este jugador."
+      );
       return;
     }
 
     if (squad.length >= 14) {
-      flash("Máximo 14 jugadores.");
+      flash(
+        "Máximo 14 jugadores."
+      );
       return;
     }
 
-    if (available < player.price) {
-      flash("No tienes presupuesto suficiente.");
+    if (
+      available < player.price
+    ) {
+      flash(
+        "No tienes presupuesto suficiente."
+      );
       return;
     }
 
@@ -302,36 +335,50 @@ function App() {
       player.id
     ]);
 
-    flash(`${player.name} fichado.`);
+    flash(
+      `${player.name} fichado.`
+    );
   }
 
   return (
     <div className="app">
 
       <header>
+
         <button
           className="mobile-logo"
-          onClick={() => setTab("home")}
+          onClick={() =>
+            setTab("home")
+          }
         >
           🇸🇲
         </button>
 
         <div className="logo">
+
           <div className="logo-mark">
             SM
           </div>
 
           <div>
-            <b>FANTA SAN MARINO</b>
+            <b>
+              FANTA SAN MARINO
+            </b>
+
             <small>
               Campionato Sammarinese · 2026/27
             </small>
           </div>
+
         </div>
 
         <div className="verified">
+
           <span />
-          Fuente principal: FSGC{" "}
+
+          Fuente principal:
+          FSGC
+
           <a
             href={OFFICIAL}
             target="_blank"
@@ -339,11 +386,13 @@ function App() {
           >
             ver
           </a>
+
         </div>
 
         <div className="user">
           A
         </div>
+
       </header>
 
       <div className="layout">
@@ -351,90 +400,87 @@ function App() {
         <aside>
 
           <div className="season">
+
             TEMPORADA ACTIVA
-            <strong>2026/27</strong>
+
+            <strong>
+              2026/27
+            </strong>
+
           </div>
 
-          <button
-            className={
-              tab === "home"
-                ? "nav active"
-                : "nav"
+          <Nav
+            active={tab === "home"}
+            onClick={() =>
+              setTab("home")
             }
-            onClick={() => setTab("home")}
+            icon="⌂"
           >
-            <i>⌂</i>
             Inicio
-          </button>
+          </Nav>
 
-          <button
-            className={
-              tab === "team"
-                ? "nav active"
-                : "nav"
+          <Nav
+            active={tab === "team"}
+            onClick={() =>
+              setTab("team")
             }
-            onClick={() => setTab("team")}
+            icon="⚽"
           >
-            <i>⚽</i>
             Mi equipo
-          </button>
+          </Nav>
 
-          <button
-            className={
-              tab === "market"
-                ? "nav active"
-                : "nav"
+          <Nav
+            active={tab === "market"}
+            onClick={() =>
+              setTab("market")
             }
-            onClick={() => setTab("market")}
+            icon="↗"
           >
-            <i>↗</i>
             Mercado
-          </button>
+          </Nav>
 
-          <button
-            className={
-              tab === "leagues"
-                ? "nav active"
-                : "nav"
+          <Nav
+            active={tab === "leagues"}
+            onClick={() =>
+              setTab("leagues")
             }
-            onClick={() => setTab("leagues")}
+            icon="♛"
           >
-            <i>♛</i>
             Ligas
-          </button>
+          </Nav>
 
-          <button
-            className={
-              tab === "players"
-                ? "nav active"
-                : "nav"
+          <Nav
+            active={tab === "players"}
+            onClick={() =>
+              setTab("players")
             }
-            onClick={() => setTab("players")}
+            icon="♙"
           >
-            <i>♙</i>
             Jugadores
-          </button>
+          </Nav>
 
-          <button
-            className={
-              tab === "calendar"
-                ? "nav active"
-                : "nav"
+          <Nav
+            active={tab === "calendar"}
+            onClick={() =>
+              setTab("calendar")
             }
-            onClick={() => setTab("calendar")}
+            icon="▣"
           >
-            <i>▣</i>
             Calendario
-          </button>
+          </Nav>
 
           <div className="sync-card">
+
             <div className="sync-dot" />
-            <b>Datos trazables</b>
+
+            <b>
+              Datos trazables
+            </b>
 
             <p>
-              Los resultados oficiales se
-              consultan tomando la FSGC como
-              fuente principal.
+              Los resultados oficiales
+              se consultan tomando la
+              FSGC como fuente principal.
             </p>
 
             <a
@@ -444,6 +490,7 @@ function App() {
             >
               FSGC oficial ↗
             </a>
+
           </div>
 
         </aside>
@@ -469,29 +516,49 @@ function App() {
               squad={squad}
               players={players}
               formation={formation}
-              setFormation={setFormation}
+              setFormation={
+                setFormation
+              }
             />
           )}
 
           {tab === "market" && (
             <Market
-              players={filteredPlayers}
+              players={
+                filteredPlayers
+              }
               search={search}
-              setSearch={setSearch}
-              teamFilter={teamFilter}
-              setTeamFilter={setTeamFilter}
+              setSearch={
+                setSearch
+              }
+              teamFilter={
+                teamFilter
+              }
+              setTeamFilter={
+                setTeamFilter
+              }
               buy={buy}
-              available={available}
-              loading={loadingPlayers}
-              status={dataStatus}
+              available={
+                available
+              }
+              loading={
+                loadingPlayers
+              }
+              status={
+                dataStatus
+              }
             />
           )}
 
           {tab === "players" && (
             <Players
-              players={filteredPlayers}
+              players={
+                filteredPlayers
+              }
               search={search}
-              setSearch={setSearch}
+              setSearch={
+                setSearch
+              }
             />
           )}
 
@@ -510,20 +577,47 @@ function App() {
       </div>
 
       <footer>
+
         <span>
           Fanta San Marino
         </span>
 
         <span>
-          Datos: <b>{dataStatus}</b>
+          Datos:
+          {" "}
+          <b>
+            {dataStatus}
+          </b>
         </span>
 
         <span>
           2026
         </span>
+
       </footer>
 
     </div>
+  );
+}
+
+function Nav({
+  active,
+  onClick,
+  icon,
+  children
+}) {
+  return (
+    <button
+      className={
+        active
+          ? "nav active"
+          : "nav"
+      }
+      onClick={onClick}
+    >
+      <i>{icon}</i>
+      {children}
+    </button>
   );
 }
 
@@ -551,9 +645,9 @@ function Home({
           </h1>
 
           <p>
-            Construye tu equipo, ficha
-            jugadores y compite con tus
-            amigos.
+            Construye tu equipo,
+            ficha jugadores y
+            compite con tus amigos.
           </p>
 
           <div className="hero-actions">
@@ -597,20 +691,35 @@ function Home({
           <div className="hero-stats">
 
             <div>
-              <b>100</b>
-              <small>M€</small>
-            </div>
+              <b>
+                100
+              </b>
 
-            <div>
-              <b>{squad.length}</b>
-              <small>PLANTILLA</small>
+              <small>
+                M€
+              </small>
             </div>
 
             <div>
               <b>
-                {available.toFixed(1)}
+                {squad.length}
               </b>
-              <small>DISPONIBLE</small>
+
+              <small>
+                PLANTILLA
+              </small>
+            </div>
+
+            <div>
+              <b>
+                {available.toFixed(
+                  1
+                )}
+              </b>
+
+              <small>
+                DISPONIBLE
+              </small>
             </div>
 
           </div>
@@ -634,7 +743,9 @@ function Home({
         />
 
         <Stat
-          n={money(available)}
+          n={money(
+            available
+          )}
           l="PRESUPUESTO"
           s="Disponible"
         />
@@ -649,24 +760,30 @@ function Home({
 
       <div className="columns">
 
-        <Card title="Primera jornada">
+        <Card
+          title="Primera jornada"
+        >
 
           <div className="fixture-list">
 
             {fixtures
               .slice(0, 5)
-              .map((fixture, i) => (
-                <Fixture
-                  key={i}
-                  f={fixture}
-                />
-              ))}
+              .map(
+                (fixture, index) => (
+                  <Fixture
+                    key={index}
+                    f={fixture}
+                  />
+                )
+              )}
 
           </div>
 
         </Card>
 
-        <Card title="Cómo funciona">
+        <Card
+          title="Cómo funciona"
+        >
 
           <Rule
             n="01"
@@ -677,46 +794,19 @@ function Home({
           <Rule
             n="02"
             t="Puntúas"
-            d="Los resultados y estadísticas oficiales servirán para calcular los puntos."
+            d="Los resultados oficiales servirán para calcular los puntos."
           />
 
           <Rule
             n="03"
             t="Compites"
-            d="Crea ligas privadas y compite con tus amigos."
+            d="Crea ligas y compite con tus amigos."
           />
 
         </Card>
 
       </div>
 
-      <div className="source-banner">
-
-        <div className="source-icon">
-          ✓
-        </div>
-
-        <div>
-          <b>
-            Fuente oficial: FSGC
-          </b>
-
-          <p>
-            La primera jornada 2026/27
-            está prevista para el
-            28–30 de agosto de 2026.
-          </p>
-        </div>
-
-        <a
-          href={FIXTURES}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Comprobar fuente ↗
-        </a>
-
-      </div>
     </>
   );
 }
@@ -728,9 +818,19 @@ function Stat({
 }) {
   return (
     <div className="stat">
-      <span>{l}</span>
-      <b>{n}</b>
-      <small>{s}</small>
+
+      <span>
+        {l}
+      </span>
+
+      <b>
+        {n}
+      </b>
+
+      <small>
+        {s}
+      </small>
+
     </div>
   );
 }
@@ -743,7 +843,9 @@ function Card({
     <section className="card">
 
       <div className="card-title">
-        <h2>{title}</h2>
+        <h2>
+          {title}
+        </h2>
       </div>
 
       {children}
@@ -760,26 +862,51 @@ function Rule({
   return (
     <div className="rule">
 
-      <b>{n}</b>
+      <b>
+        {n}
+      </b>
 
       <div>
-        <strong>{t}</strong>
-        <p>{d}</p>
+
+        <strong>
+          {t}
+        </strong>
+
+        <p>
+          {d}
+        </p>
+
       </div>
 
     </div>
   );
 }
 
-function Fixture({ f }) {
+function Fixture({
+  f
+}) {
   return (
     <div className="fixture">
 
-      <small>{f[0]}</small>
-      <b>{f[1]}</b>
-      <span>vs</span>
-      <b>{f[2]}</b>
-      <i>—</i>
+      <small>
+        {f[0]}
+      </small>
+
+      <b>
+        {f[1]}
+      </b>
+
+      <span>
+        vs
+      </span>
+
+      <b>
+        {f[2]}
+      </b>
+
+      <i>
+        —
+      </i>
 
     </div>
   );
@@ -800,9 +927,13 @@ function PageHead({
           {tag}
         </span>
 
-        <h1>{title}</h1>
+        <h1>
+          {title}
+        </h1>
 
-        <p>{text}</p>
+        <p>
+          {text}
+        </p>
 
       </div>
 
@@ -832,13 +963,17 @@ function Market({
         text="Encuentra jugadores y controla tu presupuesto."
         right={
           <div className="money-box">
+
             <small>
               DISPONIBLE
             </small>
 
             <b>
-              {money(available)}
+              {money(
+                available
+              )}
             </b>
+
           </div>
         }
       />
@@ -848,15 +983,21 @@ function Market({
         <input
           value={search}
           onChange={e =>
-            setSearch(e.target.value)
+            setSearch(
+              e.target.value
+            )
           }
           placeholder="Buscar jugador o equipo..."
         />
 
         <select
-          value={teamFilter}
+          value={
+            teamFilter
+          }
           onChange={e =>
-            setTeamFilter(e.target.value)
+            setTeamFilter(
+              e.target.value
+            )
           }
         >
 
@@ -864,14 +1005,16 @@ function Market({
             Todos
           </option>
 
-          {teams.map(team => (
-            <option
-              key={team}
-              value={team}
-            >
-              {team}
-            </option>
-          ))}
+          {teams.map(
+            team => (
+              <option
+                key={team}
+                value={team}
+              >
+                {team}
+              </option>
+            )
+          )}
 
         </select>
 
@@ -887,55 +1030,61 @@ function Market({
 
       <div className="player-grid">
 
-        {players.map(player => (
+        {players.map(
+          player => (
 
-          <article
-            className="player-card"
-            key={player.id}
-          >
+            <article
+              className="player-card"
+              key={player.id}
+            >
 
-            <div className="player-meta">
-              <span>
-                {player.pos}
-              </span>
+              <div className="player-meta">
 
-              <small>
+                <span>
+                  {player.pos}
+                </span>
+
+                <small>
+                  {player.team}
+                </small>
+
+              </div>
+
+              <div className="avatar-ball">
+                ⚽
+              </div>
+
+              <h3>
+                {player.name}
+              </h3>
+
+              <p>
                 {player.team}
-              </small>
-            </div>
+              </p>
 
-            <div className="avatar-ball">
-              ⚽
-            </div>
+              <div className="player-price">
 
-            <h3>
-              {player.name}
-            </h3>
+                <b>
+                  {money(
+                    player.price
+                  )}
+                </b>
 
-            <p>
-              {player.team}
-            </p>
+                <button
+                  className="primary small"
+                  onClick={() =>
+                    buy(player)
+                  }
+                >
+                  Fichar
+                </button>
 
-            <div className="player-price">
+              </div>
 
-              <b>
-                {money(player.price)}
-              </b>
+            </article>
 
-              <button
-                className="primary small"
-                onClick={() =>
-                  buy(player)
-                }
-              >
-                Fichar
-              </button>
-
-            </div>
-
-          </article>
-
-        ))}
+          )
+        )}
 
       </div>
 
@@ -954,7 +1103,7 @@ function Players({
       <PageHead
         tag="BASE DE DATOS"
         title="Jugadores"
-        text="Jugadores disponibles en la base de datos."
+        text="Jugadores disponibles en Supabase."
       />
 
       <div className="filters">
@@ -962,32 +1111,18 @@ function Players({
         <input
           value={search}
           onChange={e =>
-            setSearch(e.target.value)
+            setSearch(
+              e.target.value
+            )
           }
           placeholder="Buscar jugador..."
         />
 
       </div>
 
-      <Card title="Jugadores">
-
-        <div className="table table-head">
-          <span>
-            Jugador
-          </span>
-
-          <span>
-            Equipo
-          </span>
-
-          <span>
-            Posición
-          </span>
-
-          <span>
-            Valor
-          </span>
-        </div>
+      <Card
+        title="Jugadores"
+      >
 
         {players.map(
           (player, index) => (
@@ -1011,7 +1146,9 @@ function Players({
               </span>
 
               <strong>
-                {money(player.price)}
+                {money(
+                  player.price
+                )}
               </strong>
 
             </div>
@@ -1058,6 +1195,7 @@ function Team({
         text="Prepara tu equipo para la jornada."
         right={
           <div className="money-box">
+
             <small>
               DISPONIBLE
             </small>
@@ -1065,13 +1203,14 @@ function Team({
             <b>
               {money(
                 100 -
-                  selected.reduce(
-                    (sum, p) =>
-                      sum + p.price,
-                    0
-                  )
+                selected.reduce(
+                  (sum, p) =>
+                    sum + p.price,
+                  0
+                )
               )}
             </b>
+
           </div>
         }
       />
@@ -1080,23 +1219,25 @@ function Team({
 
         {Object.keys(
           formations
-        ).map(f => (
+        ).map(
+          f => (
 
-          <button
-            key={f}
-            className={
-              f === formation
-                ? "selected"
-                : ""
-            }
-            onClick={() =>
-              setFormation(f)
-            }
-          >
-            {f}
-          </button>
+            <button
+              key={f}
+              className={
+                f === formation
+                  ? "selected"
+                  : ""
+              }
+              onClick={() =>
+                setFormation(f)
+              }
+            >
+              {f}
+            </button>
 
-        ))}
+          )
+        )}
 
       </div>
 
@@ -1104,60 +1245,64 @@ function Team({
 
         {formations[
           formation
-        ].map((count, row) => (
+        ].map(
+          (count, row) => (
 
-          <div
-            className="pitch-row"
-            key={row}
-          >
+            <div
+              className="pitch-row"
+              key={row}
+            >
 
-            {Array.from(
-              { length: count },
-              (_, index) => {
+              {Array.from(
+                {
+                  length: count
+                },
+                (_, index) => {
 
-                const player =
-                  selected[
-                    index % 
-                    Math.max(
-                      selected.length,
-                      1
-                    )
-                  ];
+                  const player =
+                    selected.length
+                      ? selected[
+                          index %
+                          selected.length
+                        ]
+                      : null;
 
-                return (
+                  return (
 
-                  <div
-                    className="pitch-player"
-                    key={index}
-                  >
+                    <div
+                      className="pitch-player"
+                      key={index}
+                    >
 
-                    <div className="player-circle">
-                      {player
-                        ? "⚽"
-                        : "+"}
+                      <div className="player-circle">
+                        {player
+                          ? "⚽"
+                          : "+"}
+                      </div>
+
+                      <b>
+                        {player
+                          ? player.name.split(
+                              " "
+                            )[0]
+                          : "Vacío"}
+                      </b>
+
+                      <small>
+                        {player?.pos ||
+                          "POS"}
+                      </small>
+
                     </div>
 
-                    <b>
-                      {player
-                        ? player.name
-                            .split(" ")[0]
-                        : "Vacío"}
-                    </b>
+                  );
+                }
+              )}
 
-                    <small>
-                      {player?.pos ||
-                        "POS"}
-                    </small>
+            </div>
 
-                  </div>
-
-                );
-              }
-            )}
-
-          </div>
-
-        ))}
+          )
+        )}
 
       </div>
 
@@ -1168,42 +1313,46 @@ function Team({
         {selected.length === 0 ? (
 
           <div className="empty">
+
             No tienes jugadores.
-            Ve a Mercado para fichar.
+            Ve al Mercado para fichar.
+
           </div>
 
         ) : (
 
           <div className="table">
 
-            {selected.map(player => (
+            {selected.map(
+              player => (
 
-              <div
-                className="table-row"
-                key={player.id}
-              >
+                <div
+                  className="table-row"
+                  key={player.id}
+                >
 
-                <b>
-                  {player.name}
-                </b>
+                  <b>
+                    {player.name}
+                  </b>
 
-                <span>
-                  {player.team}
-                </span>
+                  <span>
+                    {player.team}
+                  </span>
 
-                <span>
-                  {player.pos}
-                </span>
+                  <span>
+                    {player.pos}
+                  </span>
 
-                <strong>
-                  {money(
-                    player.price
-                  )}
-                </strong>
+                  <strong>
+                    {money(
+                      player.price
+                    )}
+                  </strong>
 
-              </div>
+                </div>
 
-            ))}
+              )
+            )}
 
           </div>
 
@@ -1215,7 +1364,9 @@ function Team({
   );
 }
 
-function Leagues({ flash }) {
+function Leagues({
+  flash
+}) {
   function createLeague() {
     const code =
       Math.random()
@@ -1254,8 +1405,8 @@ function Leagues({ flash }) {
         </b>
 
         <p>
-          Comparte el código con
-          tus amigos y competid.
+          Comparte el código
+          con tus amigos.
         </p>
 
         <button
@@ -1284,7 +1435,7 @@ function Calendar() {
         right={
           <a
             className="source-btn"
-            href={FIXTURES}
+            href={OFFICIAL}
             target="_blank"
             rel="noreferrer"
           >
@@ -1293,7 +1444,9 @@ function Calendar() {
         }
       />
 
-      <Card title="Jornada 1">
+      <Card
+        title="Jornada 1"
+      >
 
         <div className="fixture-list">
 
@@ -1310,42 +1463,14 @@ function Calendar() {
 
       </Card>
 
-      <div className="source-banner">
-
-        <div className="source-icon">
-          F
-        </div>
-
-        <div>
-
-          <b>
-            Sincronización de resultados
-          </b>
-
-          <p>
-            La FSGC es la fuente
-            principal de resultados
-            oficiales.
-          </p>
-
-        </div>
-
-        <a
-          href={OFFICIAL}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Abrir FSGC ↗
-        </a>
-
-      </div>
-
     </>
   );
 }
 
 createRoot(
-  document.getElementById("root")
+  document.getElementById(
+    "root"
+  )
 ).render(
   <App />
 );
